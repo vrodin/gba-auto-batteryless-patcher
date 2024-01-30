@@ -400,6 +400,12 @@ flash_fn_table:
 .word erase_flash_3_end
 .word program_flash_3
 .word program_flash_3_end
+.word identify_flash_5
+.word identify_flash_5_end
+.word erase_flash_5 
+.word erase_flash_5_end
+.word program_flash_5
+.word program_flash_5_end
 .zero 12
 
 run_from_ram:
@@ -706,6 +712,68 @@ void program_flash_4(unsigned sa, unsigned save_size)
         __asm("nop");
 }
 asm("program_flash_4_end:");
+
+int identify_flash_5()
+{
+    unsigned rom_data, data;
+	//stop_dma_interrupts();
+	rom_data = *(unsigned *)AGB_ROM;
+    
+    _FLASH_WRITE(0, 0xF0);
+	_FLASH_WRITE(0x555, 0xAA);
+	_FLASH_WRITE(0xAAA, 0x55);
+	_FLASH_WRITE(0x555, 0x90);
+	data = *(unsigned *)AGB_ROM;
+	_FLASH_WRITE(0, 0xF0);
+	if (rom_data != data) {
+		//resume_interrupts();
+        return 1;
+	}
+    return 0;
+}
+asm("identify_flash_5_end:");
+
+void erase_flash_5(unsigned sa, unsigned save_size)
+{
+    // Erase flash sector
+    _FLASH_WRITE(sa, 0xF0);
+    _FLASH_WRITE(0x555, 0xAA);
+    _FLASH_WRITE(0xAAA, 0x55);
+    _FLASH_WRITE(0x555, 0x80);
+    _FLASH_WRITE(0x555, 0xAA);
+    _FLASH_WRITE(0xAAA, 0x55);
+    _FLASH_WRITE(sa, 0x30);
+    while (1) {
+        __asm("nop");
+        if (*(((unsigned short *)AGB_ROM)+(sa/2)) == 0xFFFF) {
+            break;
+        }
+    }
+    _FLASH_WRITE(sa, 0xF0);
+}
+asm("erase_flash_5_end:");
+
+void program_flash_5(unsigned sa, unsigned save_size)
+{
+    // Write data
+    SRAM_BANK_SEL = 0;
+    for (int i=0; i<save_size; i+=2) {
+        if (i == AGB_SRAM_SIZE)
+            SRAM_BANK_SEL = 1;
+        _FLASH_WRITE(0x555, 0xAA);
+        _FLASH_WRITE(0xAAA, 0x55);
+        _FLASH_WRITE(0x555, 0xA0);
+        _FLASH_WRITE(sa+i, (*(unsigned char *)(AGB_SRAM+i+1)) << 8 | (*(unsigned char *)(AGB_SRAM+i)));
+        while (1) {
+            __asm("nop");
+            if (*(((unsigned short *)AGB_ROM)+((sa+i)/2)) == ((*(unsigned char *)(AGB_SRAM+i+1)) << 8 | (*(unsigned char *)(AGB_SRAM+i)))) {
+                break;
+            }
+        }
+    }
+    _FLASH_WRITE(sa, 0xF0);   
+}
+asm("program_flash_5_end:");
 
 /*
 void flush_sram_ram(unsigned sa, unsigned save_size)
